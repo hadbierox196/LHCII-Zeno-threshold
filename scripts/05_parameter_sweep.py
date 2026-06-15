@@ -1,50 +1,3 @@
-"""
-WEEK 5 — Parameter Sweep (FIXED)
-═══════════════════════════════════════════════════════════════════════
-ROOT CAUSE OF PREVIOUS FAILURE
-───────────────────────────────
-Pure dephasing  L_n = √γ · |n⟩⟨n|  with no source/sink always drives
-the system to the maximally mixed state: ρ_nn = 1/N for all n, giving
-IPR = 1/N = 0.0714, independent of γ.  The sweep measured nothing.
-
-THE FIX
-───────
-A 15-dimensional Hilbert space (14 chromophores + ground state) with:
-  • Source:  L_src = √κ_in  · |b601⟩⟨g|   incoherent pump
-  • Sink:    L_snk = √κ_out · |g⟩⟨a610|   irreversible trap
-
-This creates a non-equilibrium steady state.  The ENAQT (Environment-
-Assisted Quantum Transport) effect makes IPR non-monotonic: it dips at
-intermediate γ (maximum delocalisation) then rises again at high γ
-(Quantum Zeno localisation).  The Zeno threshold γ_c is the inflection
-point of IPR(γ) on the high-γ side.
-
-EXPECTED RESULT
-───────────────
-After this script, sweep_raw.h5 should contain:
-  IPR range > 0.15 (variation across γ sweep confirms physics is working)
-  Participation ratio peaks at intermediate γ (~100–500 cm⁻¹)
-  IPR increases sharply above γ_c
-
-HOW TO RUN IN GOOGLE COLAB
-──────────────────────────
-  # Cell 1 – mount drive and navigate
-  from google.colab import drive
-  drive.mount('/content/drive')
-  import os
-  os.chdir('/content/drive/MyDrive/lhcii-zeno-threshold')
-
-  # Cell 2 – install (once per session)
-  !pip install qutip numpy scipy h5py tqdm pyyaml joblib -q
-
-  # Cell 3 – run sweep
-  %run scripts/05_parameter_sweep.py
-
-OSF PRE-REGISTRATION
-────────────────────
-Upload sweep_raw.h5 to OSF as the primary dataset BEFORE running Week 6.
-"""
-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -96,39 +49,6 @@ SOURCE         = int(  _SS.get('source_site', SOURCE_SITE))
 SINK           = int(  _SS.get('sink_site',   SINK_SITE))
 SS_METHOD      = str(  _SIM.get('steadystate_method', 'direct'))
 OUTPUT_FILE    = 'results/sweep_raw.h5'
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Single simulation
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _run_one_sim(H_base, gamma_cm1, sigma_cm1, geometry, seed):
-    """
-    Run one Lindblad simulation.  Returns (ipr, pr, site_pop) or (nan, nan, nan-array).
-
-    This function is self-contained so it can be used with joblib.Parallel.
-    """
-    rng = np.random.default_rng(seed)
-
-    # 1. Apply geometry transform
-    H = get_geometry_hamiltonian(H_base, geometry)
-
-    # 2. Apply static disorder
-    if sigma_cm1 > 0:
-        H = apply_disorder(H, sigma_cm1, rng=rng)
-
-    # 3. Build QuTiP objects
-    H_qt  = embed_hamiltonian(H)
-    c_ops = build_collapse_operators(gamma_cm1, KAPPA_IN, KAPPA_OUT, SOURCE, SINK)
-
-    # 4. Steady state
-    rho_ss = compute_steady_state(H_qt, c_ops, method=SS_METHOD, verbose=False)
-    if rho_ss is None:
-        return np.nan, np.nan, np.full(14, np.nan)
-
-    # 5. Metrics
-    ipr, pr, site_pop, _ = compute_ipr(rho_ss, n_chrom=14)
-    return ipr, pr, site_pop
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -232,29 +152,34 @@ def main():
             combo_tag = f'{geometry} | σ={sigma} cm⁻¹'
             print(f'\n── {combo_tag} ─────────────────────────')
 
+            # Optimized Loop: Rebuilds collapse operators once per unique Gamma parameter
             for gi in tqdm(range(n_g), desc='γ sweep', unit='γ'):
                 gamma = gamma_array[gi]
-
+                
                 n_done = _count_done(gi, si, geom_i)
                 if n_done >= N_REAL:
                     sim_done += N_REAL
-                    continue                # already complete — resume logic
+                    continue  # Resume logic if target checkpoints match
 
+                # ── BUILD c_ops ONCE per gamma (not 200× per realization) ──
+                c_ops_fixed = build_collapse_operators(
+                    gamma, KAPPA_IN, KAPPA_OUT, SOURCE, SINK
+                )
                 real_todo = list(range(n_done, N_REAL))
 
-                # ─ Run this γ-slice sequentially (steadystate is fast)
-                # For very large sweeps, replace with joblib.Parallel below:
-                #   from joblib import Parallel, delayed
-                #   batch = Parallel(n_jobs=-1)(
-                #       delayed(_run_one_sim)(H_base, gamma, sigma, geometry,
-                #                            gi*1000+si*100+geom_i*10+r)
-                #       for r in real_todo)
-                batch = [
-                    _run_one_sim(H_base, gamma, sigma, geometry,
-                                 seed=gi * 100000 + si * 1000 + geom_i * 100 + r)
-                    for r in real_todo
-                ]
+                def _run_fast(r):
+                    rng = np.random.default_rng(gi * 100000 + si * 1000 + geom_i * 100 + r)
+                    H = get_geometry_hamiltonian(H_base, geometry)
+                    if sigma > 0:
+                        H = apply_disorder(H, sigma, rng=rng)
+                    H_qt = embed_hamiltonian(H)
+                    rho_ss = compute_steady_state(H_qt, c_ops_fixed, method=SS_METHOD, verbose=False)
+                    if rho_ss is None:
+                        return np.nan, np.nan, np.full(14, np.nan)
+                    ipr, pr, sp, _ = compute_ipr(rho_ss, n_chrom=14)
+                    return ipr, pr, sp
 
+                batch = [_run_fast(r) for r in real_todo]
                 _save_batch(gi, si, geom_i, real_todo, batch)
                 sim_done += len(real_todo)
 
