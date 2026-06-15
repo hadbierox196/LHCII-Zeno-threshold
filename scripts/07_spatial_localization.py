@@ -1,16 +1,3 @@
-"""
-WEEK 7 — Spatial exciton density maps on LHCII molecular geometry.
-
-Extracts Mg atom coordinates from PDB 1RWT (one per chlorophyll),
-runs Lindblad at three γ values (below, at, above γ_c), and
-produces a three-panel bubble map.
-
-PDB file download:
-  !wget -q https://files.rcsb.org/download/1RWT.pdb -O data/1RWT.pdb
-
-Run: %run scripts/07_spatial_localization.py
-"""
-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -30,7 +17,8 @@ apply_pub_style()
 os.makedirs('results', exist_ok=True)
 os.makedirs('figures', exist_ok=True)
 
-PDB_PATH       = 'data/1RWT.pdb'
+# ── REPLACED: Updated to the 2BHW Monomer dataset ───────────────────────────
+PDB_PATH       = 'data/2BHW.pdb'
 SWEEP_FILE     = 'results/sweep_raw.h5'
 GAMMA_C_FILE   = 'results/week6_gamma_c_results.csv'
 KAPPA_IN       = 10.0
@@ -42,19 +30,17 @@ GEOMETRY       = 'symmetric'
 
 def extract_mg_coords(pdb_path):
     """
-    Extract Mg atom positions from LHCII PDB file.
+    Extract Mg atom positions from the LHCII PDB file.
+    Restricted to Chain A to safely parse exactly one monomer.
 
     Returns ndarray (N_MG, 3) of (x, y, z) in Å.
-
-    Expects 14 Mg atoms (one per chlorophyll in the LHCII monomer).
-    If you get a different count, check the REMARK/chain records and
-    set CHAIN_ID below to restrict to one monomer.
     """
     if not os.path.exists(pdb_path):
         raise FileNotFoundError(
             f"PDB file not found: {pdb_path}\n"
             "Download with:\n"
-            "  !wget -q https://files.rcsb.org/download/1RWT.pdb -O data/1RWT.pdb"
+            "  !mkdir -p data\n"
+            "  !wget -q \"https://files.rcsb.org/download/2BHW.pdb\" -O data/2BHW.pdb"
         )
 
     try:
@@ -63,28 +49,36 @@ def extract_mg_coords(pdb_path):
         structure = parser.get_structure('LHCII', pdb_path)
         mg_atoms = []
         residue_names = []
+        
+        # ── REPLACED: Explicit Chain A Monomer filtering ──────────────────────
         for model in structure:
             for chain in model:
+                if chain.id not in ('A',):  # Chain A isolation
+                    continue
                 for residue in chain:
                     for atom in residue:
                         if atom.get_name() == 'MG':
                             mg_atoms.append(atom.get_vector().get_array())
                             residue_names.append(residue.get_resname())
-            break   # first model only
+                            break  # Move to next residue once Mg is pulled
+            break   # Parse first model configuration only
 
         coords = np.array(mg_atoms)
-        print(f'Found {len(coords)} Mg atoms (residues: {set(residue_names)})')
+        print(f'Found {len(coords)} Mg atoms in Chain A (residues: {set(residue_names)})')
 
         if len(coords) != 14:
-            print(f'WARNING: expected 14, got {len(coords)}.')
-            print('This PDB contains the LHCII trimer (42 Chl) or a different assembly.')
-            print('Restricting to first 14 Mg atoms for the monomer.')
-            coords = coords[:14]
+            print(f'WARNING: expected 14 monomeric sites, got {len(coords)}.')
+            if len(coords) > 14:
+                print('Trimming down to the primary 14 structural indices.')
+                coords = coords[:14]
+            else:
+                print('Using fallback matrix coordinates due to missing structural records.')
+                return _placeholder_coords()
 
         return coords
 
     except ImportError:
-        print('BioPython not installed.  Using placeholder coordinates.')
+        print('BioPython not installed. Using fallback placeholder coordinates.')
         return _placeholder_coords()
 
 
@@ -92,11 +86,9 @@ def _placeholder_coords():
     """
     Approximate Mg atom positions (Å) for LHCII monomer.
     These are rough positions for visualisation only.
-    Replace with real coordinates from PDB 1RWT.
     """
-    print('Using placeholder coordinates — run pip install biopython and download 1RWT.pdb')
+    print('Using placeholder coordinates — run pip install biopython and download 2BHW.pdb')
     rng = np.random.default_rng(42)
-    # LHCII spans roughly 45×45 Å in the membrane plane
     coords = rng.uniform(0, 45, size=(14, 3))
     coords[:, 2] = 0   # project to z=0
     return coords
@@ -111,11 +103,9 @@ def get_gamma_c(geometry=GEOMETRY):
         row = df[(df['geometry'] == geometry) & (df['sigma_cm1'] == 0)]
         if not row.empty:
             return float(row['gamma_c'].values[0])
-    # Fallback: look at sweep to estimate
     if os.path.exists(SWEEP_FILE):
         with h5py.File(SWEEP_FILE, 'r') as f:
             gamma_array = f['gamma_array'][:]
-        # Very rough: midpoint of sweep
         return float(gamma_array[len(gamma_array)//2])
     return 300.0   # cm⁻¹ typical default
 
