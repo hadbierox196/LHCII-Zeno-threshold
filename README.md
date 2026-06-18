@@ -1,164 +1,240 @@
-# LHCII Zeno Threshold Project
+# LHCII Quantum Zeno Threshold Mapping
 
-**Research question:** Does the ratio γ/Δε² determine Quantum Zeno regime
-entry in LHCII chromophore networks, and does γ_c predict exciton
-localisation topology in a geometry-dependent manner?
+[![OSF Pre-registration](https://img.shields.io/badge/OSF-Pre--registered-blue)](https://doi.org/10.17605/OSF.IO/SXTHP)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
+[![Platform: Google Colab](https://img.shields.io/badge/Platform-Google%20Colab-orange)](https://colab.research.google.com/)
 
-**OSF pre-registration DOI:** `https://doi.org/10.17605/OSF.IO/SXTHP`
+**Author:** Hassan Farooq, Sargodha Medical College  
+**OSF Pre-registration:** https://doi.org/10.17605/OSF.IO/SXTHP  
+**Status:** Manuscript in preparation
 
 ---
 
-## ⚡ Quick start in Google Colab
+## Research Question
 
+In the LHCII light-harvesting chromophore network, at what pure dephasing rate γ does
+the system transition from environment-assisted quantum transport (ENAQT) into the
+Quantum Zeno localisation regime — and does this threshold depend on chromophore
+network geometry?
+
+---
+
+## Key Findings
+
+| Quantity | Value |
+|---|---|
+| ENAQT optimum γ_ENAQT (symmetric, σ=0) | **112.5 cm⁻¹** |
+| Zeno threshold γ_c (symmetric, σ=0) | **701.2 cm⁻¹** (95% CI: 692.4–710.1) |
+| Physiological dephasing range at 300 K | 50–200 cm⁻¹ |
+| Geometry dependence of γ_c | 1.02× fold (not significant) |
+| LHCII regime in vivo | **ENAQT optimum** — γ_phys ≈ γ_ENAQT |
+
+**Headline result:** The ENAQT optimum (γ_ENAQT = 112.5 cm⁻¹, dephasing
+timescale ≈ 47 fs) falls within the physiological protein conformational fluctuation
+range at 300 K. The Quantum Zeno threshold is 6.2-fold above physiological
+conditions. LHCII appears to be tuned to operate at its quantum transport optimum
+in vivo.
+
+---
+
+## Method
+
+- **Model:** 15-dimensional Lindblad master equation (14 chromophores + ground state)
+- **Boundary conditions:** Incoherent source at Chl *b* 601; irreversible sink at Chl *a* 610
+- **Hamiltonian:** Müh et al. 2010 *J. Phys. Chem. B* (QM/MM, 14-site LHCII monomer)
+- **Metric:** Inverse Participation Ratio (IPR) of the non-equilibrium steady-state density matrix
+- **Solver:** Pure NumPy/SciPy — scipy.linalg.solve on the 225×225 Liouville superoperator
+- **Sweep:** 40 γ × 3 σ × 2 geometry × 100 realisations = **24,000 simulations in 3.9 min**
+
+---
+
+## The Core Physics Fix
+
+Pure dephasing with no source or sink always drives the system to the maximally mixed
+state: IPR = 1/N = 0.0714 for all γ. This is mathematically guaranteed — not a code
+bug — and means a naive sweep measures nothing physical.
+
+The fix is a **15-dimensional Hilbert space** (14 chromophores + electronic ground
+state |g⟩) with three categories of collapse operator:
+
+| Operator | Form | Physics |
+|---|---|---|
+| Dephasing | L_n = √γ \|n⟩⟨n\| for n = 0..13 | Site-energy fluctuations from protein bath |
+| Source | L_src = √κ_in \|b601⟩⟨g\| | Incoherent photon absorption at Chl b 601 |
+| Sink | L_snk = √κ_out \|g⟩⟨a610\| | Irreversible trapping toward reaction centre |
+
+This creates a non-equilibrium steady state where IPR depends non-trivially on γ.
+See `src/lindblad.py` for the full derivation and implementation.
+
+---
+
+## Repository Structure
+
+```
+LHCII-Zeno-threshold/
+│
+├── src/
+│   ├── hamiltonian.py        # LHCII Hamiltonian loader and builder
+│   ├── lindblad.py           # 15-site source-sink Lindblad model (physics fix)
+│   ├── metrics.py            # IPR, participation ratio, sigmoid model
+│   └── visualization.py      # Publication-quality plotting utilities
+│
+├── scripts/
+│   ├── 00_quick_diagnostic.py    # Run this FIRST — validates source-sink fix
+│   ├── 01_dimer_validation.py    # 2-site dimer Lindblad limiting cases
+│   ├── 02_build_hamiltonian.py   # Build LHCII Hamiltonian from Müh 2010
+│   ├── 03_ipr_validation.py      # IPR formula validation and 5-point preview
+│   ├── 05_parameter_sweep.py     # Full γ sweep (optimised NumPy/SciPy solver)
+│   ├── 06_threshold_extraction.py # Sigmoid fit and γ_c extraction
+│   ├── 07_spatial_localization.py # Exciton density maps on PDB coordinates
+│   ├── 08_robustness_controls.py  # Parameter sensitivity analysis
+│   └── 09_figure_finalization.py  # Manuscript figures + Results section draft
+│
+├── data/
+│   └── hamiltonians/         # Source documentation; place 1RWT.pdb here
+│
+├── config.yaml               # All tunable parameters
+├── Snakefile                 # Full reproducible pipeline
+├── COLAB_SETUP.py            # Paste into Colab Cell 1 to configure session
+└── requirements.txt          # Python dependencies
+```
+
+---
+
+## Quick Start (Google Colab)
+
+**Cell 1 — Session setup**
 ```python
-# ── Cell 1: mount Google Drive
 from google.colab import drive
 drive.mount('/content/drive')
 import os
-os.chdir('/content/drive/MyDrive/lhcii-zeno-threshold')
+os.chdir('/content/drive/MyDrive/LHCII-Zeno-threshold')
+!pip install qutip==4.7.3 numpy scipy matplotlib h5py pandas tqdm pyyaml -q
+```
 
-# ── Cell 2: install dependencies (run once per Colab session)
-!pip install qutip numpy scipy matplotlib h5py pandas \
-             joblib biopython pyyaml tqdm seaborn scikit-learn -q
+**Cell 2 — Keepalive thread (prevents disconnection during sweep)**
+```python
+import threading, time, sys
+def _keep():
+    for i in range(9999):
+        time.sleep(55)
+        sys.stdout.write(f'\r keepalive {i+1}'); sys.stdout.flush()
+threading.Thread(target=_keep, daemon=True).start()
+```
 
-# ── Cell 3: run any week
-%run scripts/01_dimer_validation.py
-%run scripts/02_build_hamiltonian.py   # fill in Müh 2010 values first!
-%run scripts/03_ipr_validation.py
-%run scripts/05_parameter_sweep.py     # the FIXED sweep (Week 5)
+**Cell 3 — Validate the source-sink model (30 seconds)**
+```python
+%run scripts/00_quick_diagnostic.py
+```
+
+**Cell 4 — Run the full sweep (~4 minutes)**
+```python
+%run scripts/05_parameter_sweep.py
+```
+
+**Cell 5 — Extract γ_c and generate figures**
+```python
 %run scripts/06_threshold_extraction.py
-%run scripts/07_spatial_localization.py
-%run scripts/08_robustness_controls.py
 %run scripts/09_figure_finalization.py
-
-# ── Or run the full Snakemake pipeline
-!pip install snakemake -q
-!snakemake --cores 1
 ```
 
 ---
 
-## The Week 5 bug and its fix
-
-**Bug:** Pure dephasing with no source or sink always produces the
-maximally mixed state (IPR = 1/14 = 0.0714 for all γ). The sweep
-measured nothing physical.
-
-**Fix:** A 15-dimensional Hilbert space (14 chromophores + ground state)
-with an incoherent pump (source at b601) and an irreversible trap
-(sink at a610). This produces a non-equilibrium steady state where IPR
-depends non-trivially on γ.
-
-See `src/lindblad.py` for the detailed explanation and implementation.
-
----
-
-## Project structure
-
-```
-lhcii-zeno-threshold/
-├── README.md
-├── requirements.txt          ← Python dependencies
-├── config.yaml               ← ALL tunable parameters
-├── Snakefile                 ← reproducible pipeline
-│
-├── src/                      ← core physics modules
-│   ├── hamiltonian.py        ← load / build LHCII Hamiltonian
-│   ├── lindblad.py           ← 15-site source-sink Lindblad model
-│   ├── metrics.py            ← IPR, PR, entropy, sigmoid model
-│   └── visualization.py      ← publication-quality plotting
-│
-├── scripts/                  ← one script per week
-│   ├── 01_dimer_validation.py
-│   ├── 02_build_hamiltonian.py   ← ⚠ fill in Müh 2010 values
-│   ├── 03_ipr_validation.py
-│   ├── 05_parameter_sweep.py     ← ★ FIXED (source + sink)
-│   ├── 06_threshold_extraction.py
-│   ├── 07_spatial_localization.py
-│   ├── 08_robustness_controls.py
-│   └── 09_figure_finalization.py
-│
-├── data/
-│   └── hamiltonians/         ← place 1RWT.pdb here
-│
-├── results/                  ← generated outputs (not committed)
-└── figures/                  ← generated figures (not committed)
-```
-
----
-
-## Critical first step: build the Hamiltonian (Week 2)
+## Hamiltonian Setup (Required Before First Run)
 
 Open `scripts/02_build_hamiltonian.py` and replace all values marked
-`← REPLACE` with the exact numbers from:
+`← REPLACE` with exact numbers from:
 
-> Müh, F. et al. (2010) α-helices direct excitation energy flow in
-> the Fenna-Matthews-Olson protein. *PNAS* 107, 16297–16302.
-> DOI: 10.1073/pnas.1004206107
+> Müh, F., Madjet, M. E., & Renger, T. (2010). Structure-based identification
+> of energy sinks in plant light-harvesting complex II.
+> *J. Phys. Chem. B*, **114**, 13517–13535.
+> DOI: [10.1021/jp106323e](https://doi.org/10.1021/jp106323e)
 
-Then run:
+Then run the script once to generate `results/lhcii_hamiltonian_mueh2010.h5`.
+Every downstream script loads from this file.
+
+**Site ordering (0-indexed, Müh 2010):**
+
+| Index | Site | Energy (cm⁻¹) | Role |
+|---|---|---|---|
+| 0–7 | Chl a 602–609 | 15,020–15,220 | Antenna |
+| 8–11 | Chl a 610–613 | 14,730–15,020 | Low-energy cluster |
+| **12** | **Chl b 601** | **15,880** | **Source site** |
+| 13 | Chl b 606 | 15,970 | Antenna |
+
+---
+
+## Reproducing All Results
+
+From a clean Colab session with the repo on Google Drive:
+
 ```python
-%run scripts/02_build_hamiltonian.py
+%run COLAB_SETUP.py                    # install + navigate
+%run scripts/02_build_hamiltonian.py   # requires Müh 2010 values
+%run scripts/05_parameter_sweep.py     # ~4 min, saves sweep_raw_v2.h5
+%run scripts/06_threshold_extraction.py
+%run scripts/09_figure_finalization.py
 ```
 
-This saves `results/lhcii_hamiltonian_mueh2010.h5`.  Every downstream
-script loads from this file — no values are hardcoded elsewhere.
-
----
-
-## Unit conventions
-
-| Quantity | Python API | QuTiP internal |
-|---|---|---|
-| Site energies | cm⁻¹ | rad/ps (× 0.18836) |
-| Coupling J | cm⁻¹ | rad/ps |
-| Dephasing γ | cm⁻¹ | rad/ps |
-| Source κ_in | cm⁻¹ | rad/ps |
-| Sink κ_out | cm⁻¹ | rad/ps |
-| Time (mesolve) | ps | — |
-
-Conversion: `1 cm⁻¹ × 2π × c(cm/ps) = 1 cm⁻¹ × 0.18836 rad/ps`
-
----
-
-## Download PDB file (for Week 7)
+Or with Snakemake (local environment):
 
 ```bash
-# In Colab:
-!mkdir -p data
-!wget -q https://files.rcsb.org/download/1RWT.pdb -O data/1RWT.pdb
+pip install snakemake
+snakemake --cores 1 --forceall
 ```
 
 ---
 
-## Config parameters (`config.yaml`)
+## Scope Reduction Note
 
-All sweep parameters, source/sink rates, and figure settings are in
-`config.yaml`.  Change them there; no script edits needed.
-
-Key parameters:
-- `source_sink.kappa_in_cm1`: pumping rate into b601 (default 10 cm⁻¹)
-- `source_sink.kappa_out_cm1`: trapping rate at a610 (default 100 cm⁻¹)
-- `sweep.gamma_min_cm1 / gamma_max_cm1`: sweep range
-- `sweep.n_realizations`: disorder realisations per (γ, σ) point
+The pre-registered sweep (OSF) specified 80 γ × 5 σ × 2 geom × 200 realisations
+= 160,000 simulations. This was reduced to 40 × 3 × 2 × 100 = **24,000 simulations**
+due to Google Colab compute constraints (Pivot Trigger 3, documented in OSF
+pre-registration before execution). The NumPy/SciPy solver completed the reduced
+sweep in 3.9 minutes on Colab CPU. Qualitative conclusions are unchanged.
 
 ---
 
-## Checklist before submitting (Week 12)
+## Data Availability
 
-- [ ] OSF pre-registration timestamped before Week 5 sweep
-- [ ] `sweep_raw.h5` uploaded to OSF (primary dataset)
-- [ ] `lhcii_hamiltonian_mueh2010.h5` verified against Müh 2010
-- [ ] All figures: PNG (300 dpi) + SVG
-- [ ] `snakemake --forceall --cores 1` runs clean from scratch
-- [ ] GitHub repo public with this README and OSF DOI badge
+| Dataset | Location |
+|---|---|
+| Primary sweep (`sweep_raw_v2.h5`) | OSF: https://doi.org/10.17605/OSF.IO/SXTHP |
+| LHCII Hamiltonian (`lhcii_hamiltonian_mueh2010.h5`) | OSF (same DOI) |
+| Pre-registration (timestamped) | OSF (same DOI) |
+| Analysis code | This repository |
+
+Large binary files (HDF5, PDB) are not committed to this repository.
+
+---
+
+## Unit Conventions
+
+| Quantity | API unit | Internal unit |
+|---|---|---|
+| Site energies, coupling J | cm⁻¹ | rad ps⁻¹ (× 0.1884) |
+| Dephasing rate γ | cm⁻¹ | rad ps⁻¹ |
+| Source κ_in, sink κ_out | cm⁻¹ | rad ps⁻¹ |
+
+Conversion: `1 cm⁻¹ = 2π × 2.998 × 10⁻² rad ps⁻¹ ≈ 0.1884 rad ps⁻¹`
 
 ---
 
 ## Citation
 
-If you use this code, please cite:
+If you use this code or data, please cite:
 
-> Farooq, H. (2025). *Quantum Zeno threshold mapping in LHCII chromophore
-> networks.* OSF pre-registration DOI: [YOUR DOI].
-> GitHub: https://github.com/[YOUR_USERNAME]/lhcii-zeno-threshold
+```
+Farooq, H. (2025). Quantum Zeno threshold mapping in LHCII chromophore networks:
+physiological dephasing rates coincide with the ENAQT optimum.
+Manuscript in preparation.
+OSF pre-registration: https://doi.org/10.17605/OSF.IO/SXTHP
+GitHub: https://github.com/hadbierox196/LHCII-Zeno-threshold
+```
+
+---
+
+## License
+
+MIT License. See `LICENSE` for details.
