@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 [![Platform: Google Colab](https://img.shields.io/badge/Platform-Google%20Colab-orange)](https://colab.research.google.com/)
+[![DOI](https://zenodo.org/badge/1269738652.svg)](https://doi.org/10.5281/zenodo.20749253)
 
 **Author:** Hassan Farooq, Sargodha Medical College  
 **OSF Pre-registration:** https://doi.org/10.17605/OSF.IO/SXTHP  
