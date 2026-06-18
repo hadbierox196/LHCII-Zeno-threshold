@@ -4,7 +4,7 @@
 entry in LHCII chromophore networks, and does γ_c predict exciton
 localisation topology in a geometry-dependent manner?
 
-**OSF pre-registration DOI:** `[PASTE YOUR DOI HERE]`
+**OSF pre-registration DOI:** `https://doi.org/10.17605/OSF.IO/SXTHP`
 
 ---
 
